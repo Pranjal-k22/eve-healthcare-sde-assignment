@@ -1,8 +1,13 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+# Set safe test-only environment secrets prior to loading settings/app
+os.environ["SECRET_KEY"] = "test_only_secret_key_12345678901234567890"
+os.environ["WEBHOOK_SECRET"] = "test_only_webhook_secret_12345678901234567890"
 
 from app.core.database import Base, get_db
 from app.main import app

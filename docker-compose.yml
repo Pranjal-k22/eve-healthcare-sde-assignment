@@ -35,8 +35,8 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_DB=eve_healthcare_db
       - DATABASE_URL=postgresql://eve_user:eve_password@db:5432/eve_healthcare_db
-      - SECRET_KEY=supersecretkeyforproductionenvironment123456!
-      - WEBHOOK_SECRET=supersecretwebhooksecretforproductionenvironment123456!
+      - SECRET_KEY=${SECRET_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
     depends_on:

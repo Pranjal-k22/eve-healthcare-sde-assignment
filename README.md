@@ -160,7 +160,7 @@ The relational schema is built on 6 core models with strict referential integrit
 
 ## Environment Variables Configuration
 
-The application configures settings via `pydantic-settings` from environment variables or `.env`:
+The application configures settings via `pydantic-settings` directly from environment variables or `.env`. There are **no default secret values** in `app/core/config.py`; `SECRET_KEY` and `WEBHOOK_SECRET` MUST be provided in the environment or `.env` file.
 
 ```env
 # Application Configuration
@@ -183,131 +183,31 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 ```
 
----
-
-## Core Technical Features
-
-### 1. Webhook Idempotency & HMAC Security
-When payment providers send event webhooks:
-- **HMAC Signature Check**: Webhook requests require an `X-Signature` header containing an HMAC-SHA256 signature computed over the raw body bytes using `WEBHOOK_SECRET`. Requests missing or containing an invalid signature return `401 Unauthorized`.
-- **Database Unique Constraint**: Incoming `event_id` is queried against `webhook_events`. If found, processing returns `200 OK` with `status: "already_processed"`.
-- **Concurrent Race Protection**: Concurrent duplicate webhook deliveries trigger PostgreSQL `UNIQUE` index constraint violation (`IntegrityError`), caught gracefully with session rollback.
-- **State Transition Guard**: Webhook updates only apply to bookings currently in `PENDING` state. Replays against finalized bookings (`CONFIRMED`, `FAILED`, `CANCELLED`) are safely ignored.
-
-### 2. Computing `X-Signature` Header (Copy-Paste Examples)
-
-#### Python Example
-```python
-import hmac
-import hashlib
-import requests
-
-secret = "whsec_supersecretmockkey123456789"
-body = '{"event_id":"evt_wh_1001","provider_payment_id":"pay_prov_555","booking_id":"b9f8e7d6-1111-2222-3333-444455556666","status":"SUCCESS"}'
-
-signature = hmac.new(secret.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()
-
-headers = {
-    "Content-Type": "application/json",
-    "X-Signature": signature
-}
-
-response = requests.post("http://localhost:8000/payments/webhook/", data=body, headers=headers)
-print(response.json())
+### Docker Compose Configuration Flow
+The intended configuration flow for Docker environments is:
+```text
+.env.example  ──►  Developer creates .env  ──►  docker compose  ──►  Container Environment  ──►  FastAPI Settings
 ```
-
-#### PowerShell Example
-```powershell
-$secret = "whsec_supersecretmockkey123456789"
-$body = '{"event_id":"evt_wh_1001","provider_payment_id":"pay_prov_555","booking_id":"b9f8e7d6-1111-2222-3333-444455556666","status":"SUCCESS"}'
-
-$hmac = [System.Security.Cryptography.HMACSHA256]::new([System.Text.Encoding]::UTF8.GetBytes($secret))
-$hash = $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($body))
-$signature = [BitConverter]::ToString($hash).Replace("-", "").ToLower()
-
-$headers = @{
-    "Content-Type" = "application/json"
-    "X-Signature" = $signature
-}
-
-Invoke-RestMethod -Method Post -Uri "http://localhost:8000/payments/webhook/" -Headers $headers -Body $body
-```
-
-#### cURL / Bash Example
-```bash
-BODY='{"event_id":"evt_wh_1001","provider_payment_id":"pay_prov_555","booking_id":"b9f8e7d6-1111-2222-3333-444455556666","status":"SUCCESS"}'
-SECRET='whsec_supersecretmockkey123456789'
-SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
-
-curl -X POST http://localhost:8000/payments/webhook/ \
-  -H "Content-Type: application/json" \
-  -H "X-Signature: $SIG" \
-  -d "$BODY"
-```
-
-### 3. State Machine & Row-Level Locking
-- **Initial State**: All newly created bookings start in `PENDING` state.
-- **Row-Level Lock**: When processing payments or webhooks, the booking is locked using `db.query(Booking).filter(...).with_for_update().first()`, preventing double-payment race conditions.
-- **Valid Transitions**:
-  - `PENDING` -> `CONFIRMED` (via Payment SUCCESS)
-  - `PENDING` -> `FAILED` (via Payment FAILED)
-  - `PENDING` -> `CANCELLED` (via User Cancellation)
-- Terminal states block further mutations (`400 Bad Request`).
-
-### 4. Server-Side Price Integrity
-Pricing is fetched directly from `DiagnosticTest.price` in PostgreSQL during booking creation. Client-submitted price inputs are ignored to prevent price tampering attacks.
+`docker-compose.yml` passes `${SECRET_KEY}` and `${WEBHOOK_SECRET}` from the local `.env` into the `web` container's environment. Secrets are never hardcoded inside `docker-compose.yml` or source files.
 
 ---
 
 ## Local Setup & Runbook
 
-### Prerequisites
-- Python 3.11+
-- PostgreSQL server (or Docker & Docker Compose)
+> **Note**: Docker Compose is the recommended easiest local setup because it provisions PostgreSQL, configures the environment, and runs migrations automatically.
 
-### 1. Local Environment Configuration
-Clone the repository and copy the environment template:
-```bash
-git clone https://github.com/Pranjal-k22/eve-healthcare-sde-assignment.git
-cd eve-healthcare-sde-assignment
-cp .env.example .env
-```
-
-Create a virtual environment and install dependencies:
-```bash
-python -m venv .venv
-# On Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# On Linux/macOS:
-source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-### 2. Database Migration & Server Execution
-Ensure PostgreSQL is running locally with credentials matching `.env`, then run database migrations:
-```bash
-python -m alembic upgrade head
-```
-
-Start the FastAPI development server:
-```bash
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Access the interactive API documentation at:
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
----
-
-## Running with Docker Compose (Recommended)
+### Running with Docker Compose (Recommended)
 
 To launch the complete application stack (PostgreSQL database + FastAPI application + Automatic database migrations) with a single command:
 
-```bash
-docker compose up --build
-```
+1. Create `.env` from `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Run Docker Compose:
+   ```bash
+   docker compose up --build
+   ```
 
 The application will automatically wait for PostgreSQL to pass its health check, execute Alembic migrations, and start listening on port `8000`.
 
@@ -315,6 +215,49 @@ To stop the containers:
 ```bash
 docker compose down
 ```
+
+---
+
+## Local Run Without Docker
+
+If running without Docker, a native **PostgreSQL** instance is required. Do NOT add SQLite to the production or application database configuration merely to avoid PostgreSQL setup.
+
+1. **Ensure PostgreSQL is running** locally on port 5432 (or your configured port).
+2. **Create the database user** matching the example configuration:
+   ```sql
+   CREATE USER eve_user WITH PASSWORD 'eve_password';
+   ```
+3. **Create the database** matching the example configuration and grant ownership:
+   ```sql
+   CREATE DATABASE eve_healthcare_db OWNER eve_user;
+   GRANT ALL PRIVILEGES ON DATABASE eve_healthcare_db TO eve_user;
+   ```
+4. **Set environment variables** in `.env` or your shell:
+   - Set `DATABASE_URL` (e.g. `postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db`)
+   - Set `SECRET_KEY` (e.g. `your_secure_secret_key_here`)
+   - Set `WEBHOOK_SECRET` (e.g. `your_secure_webhook_secret_here`)
+5. **Create a virtual environment & install dependencies**:
+   ```bash
+   python -m venv .venv
+   # On Windows PowerShell:
+   .venv\Scripts\Activate.ps1
+   # On Linux/macOS:
+   source .venv/bin/activate
+
+   pip install -r requirements.txt
+   ```
+6. **Execute database migrations**:
+   ```bash
+   python -m alembic upgrade head
+   ```
+7. **Start the FastAPI application**:
+   ```bash
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+
+Access the interactive API documentation at:
+- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 
 ---
 
@@ -413,8 +356,12 @@ tests/test_webhooks.py ........                         [100%]
 
 ## Engineering Assumptions & Limitations
 
-- **Assumptions**: Payment providers furnish a unique string `event_id` for every distinct event, along with `provider_payment_id` and target `booking_id`.
-- **Limitations**: Idempotency is managed within PostgreSQL database transaction boundaries using unique constraints and row-level locking (`with_for_update()`). For multi-region microservice deployments, a distributed locking mechanism (e.g., Redis `Redlock`) can be layered on top.
+- **Assumptions**: Payment providers furnish a unique string `event_id` for every distinct event, along with `provider_payment_id` and target `booking_id`. Requests must provide a valid HMAC-SHA256 signature in the `X-Signature` header computed over raw request body bytes using `WEBHOOK_SECRET`.
+- **Idempotency & Duplicate Deliveries**: Repeated webhooks with the same `event_id` return `200 OK` with `status: "already_processed"` and do not create duplicate payment records or duplicate bookings.
+- **Out-of-Order Webhook Delivery**: If a booking is already `CONFIRMED` by an earlier `SUCCESS` event, a subsequent out-of-order event (with a new `event_id` and `FAILED` status) will log the event record but will NOT revert the booking status from `CONFIRMED` to `FAILED` or alter existing payment records.
+- **Malformed JSON Handling**: Webhook requests containing syntactically invalid or malformed JSON payloads return `422 Unprocessable Entity` from FastAPI's request validation parser.
+- **SQLite Concurrency Limitation**: The automated test suite uses an in-memory SQLite database (`sqlite:///:memory:`) for rapid, isolated execution. While SQLite supports basic row operations, application transaction boundaries use PostgreSQL `SELECT ... FOR UPDATE` (`with_for_update()`). Application uses PostgreSQL `SELECT ... FOR UPDATE`, but the standard SQLite test suite does not prove PostgreSQL locking semantics. True row-level lock concurrency must be verified against a live PostgreSQL server.
+- **Pagination**: Endpoint `GET /bookings` supports standard limit/offset pagination using query parameters `page` (default 1) and `page_size` (default 10, max 100).
 
 ---
 
@@ -423,3 +370,4 @@ tests/test_webhooks.py ........                         [100%]
 1. **Rate Limiting**: Integrate `slowapi` or Redis token-bucket rate limiting on `/auth/login` and `/payments/webhook/`.
 2. **Asynchronous Webhook Queue**: Integrate Celery or Arq with Redis for background retries of failed downstream webhook events.
 3. **Structured JSON Logging**: Implement `structlog` for enhanced observability in cloud logging platforms (Datadog, AWS CloudWatch).
+

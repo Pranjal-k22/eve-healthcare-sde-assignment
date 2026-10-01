@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db"
 
     # Security
-    SECRET_KEY: str = "supersecretkeyforlocaldevonly1234567890!"
-    WEBHOOK_SECRET: str = "whsec_supersecretmockkey123456789"
+    SECRET_KEY: str
+    WEBHOOK_SECRET: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
