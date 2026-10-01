@@ -47,24 +47,35 @@ jobs:
 
       - name: Run Database Migrations & Test Suite against PostgreSQL
         env:
-          SECRET_KEY: ci_secret_key_testing_1234567890
-          WEBHOOK_SECRET: ci_webhook_secret_testing_1234567890
+          SECRET_KEY: ci_secret_key_testing_12345678901234567890
+          WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
           DATABASE_URL: postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
           TEST_DATABASE_URL: postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
         run: |
           python -m alembic upgrade head
           python -m pytest -v
 
+      - name: Debug PostgreSQL & Test Failure Details
+        if: failure()
+        run: |
+          python --version
+          python -m alembic current || true
+          python -c "import os; print('DATABASE_URL set:', bool(os.getenv('DATABASE_URL')))"
+          python -c "import os; print('SECRET_KEY set:', bool(os.getenv('SECRET_KEY')))"
+          python -c "import os; print('WEBHOOK_SECRET set:', bool(os.getenv('WEBHOOK_SECRET')))"
+
   docker-compose-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create .env configuration
+      - name: Create .env configuration for Docker Compose
         run: |
           cp .env.example .env
-          sed -i 's/SECRET_KEY=.*/SECRET_KEY=ci_secret_key_testing_1234567890/' .env
-          sed -i 's/WEBHOOK_SECRET=.*/WEBHOOK_SECRET=ci_webhook_secret_testing_1234567890/' .env
+          sed -i 's|SECRET_KEY=.*|SECRET_KEY=ci_secret_key_testing_12345678901234567890|' .env
+          sed -i 's|WEBHOOK_SECRET=.*|WEBHOOK_SECRET=ci_webhook_secret_testing_12345678901234567890|' .env
+          sed -i 's|POSTGRES_SERVER=localhost|POSTGRES_SERVER=db|' .env
+          sed -i 's|DATABASE_URL=postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db|DATABASE_URL=postgresql://eve_user:eve_password@db:5432/eve_healthcare_db|' .env
 
       - name: Build and Start Docker Compose Stack
         run: |
@@ -83,7 +94,16 @@ jobs:
             fi
             sleep 2
           done
-          echo "Health check timed out. Showing docker logs:"
-          docker compose ps
-          docker compose logs --tail=100
+          echo "Health check timed out."
           exit 1
+
+      - name: Debug Docker Failures & Logs
+        if: failure()
+        run: |
+          echo "=== Docker Compose PS (All Containers) ==="
+          docker compose ps -a
+          echo "=== Docker Compose Web Logs ==="
+          docker compose logs --tail=200 web
+          echo "=== Docker Compose DB Logs ==="
+          docker compose logs --tail=200 db
+
