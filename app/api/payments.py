@@ -14,7 +14,7 @@ from app.models.user import User
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
-@router.post("", response_model=PaymentResponse, status_code=status.HTTP_200_OK)
+@router.post("/", response_model=PaymentResponse, status_code=status.HTTP_200_OK)
 def create_simulated_payment(
     payment_in: SimulatedPaymentRequest,
     db: Session = Depends(get_db),
@@ -23,11 +23,29 @@ def create_simulated_payment(
     return process_simulated_payment(db=db, current_user_id=current_user.id, payment_in=payment_in)
 
 
-@router.post("/webhook/", response_model=WebhookProcessResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/webhook/",
+    response_model=WebhookProcessResponse,
+    status_code=status.HTTP_200_OK,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": PaymentWebhookPayload.model_json_schema()
+                }
+            },
+            "required": True,
+        }
+    },
+)
 async def handle_payment_webhook(
     request: Request,
     db: Session = Depends(get_db),
-    x_signature: str | None = Header(None, alias="X-Signature"),
+    x_signature: str | None = Header(
+        None,
+        alias="X-Signature",
+        description="HMAC-SHA256 signature header computed over raw request body bytes using WEBHOOK_SECRET",
+    ),
 ):
     """Idempotent payment webhook endpoint receiving status updates from payment providers."""
     raw_body = await request.body()

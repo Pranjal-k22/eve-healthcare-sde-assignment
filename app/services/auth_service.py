@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password, decode_access_token
@@ -10,7 +10,7 @@ from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.models.user import User
 from app.schemas.auth import UserSignupRequest
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+security_scheme = HTTPBearer(auto_error=True)
 
 
 def register_user(db: Session, user_in: UserSignupRequest) -> User:
@@ -53,9 +53,10 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    token = credentials.credentials
     payload = decode_access_token(token)
     user_id_str: str = payload.get("sub")
     if not user_id_str:

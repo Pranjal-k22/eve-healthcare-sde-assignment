@@ -1,5 +1,6 @@
 # Private engineering documentation (Control Center)
 docs/
+scratch/
 
 # Environment and Secrets
 .env

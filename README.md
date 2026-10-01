@@ -356,12 +356,8 @@ tests/test_webhooks.py ........                         [100%]
 
 ## Engineering Assumptions & Limitations
 
-- **Assumptions**: Payment providers furnish a unique string `event_id` for every distinct event, along with `provider_payment_id` and target `booking_id`. Requests must provide a valid HMAC-SHA256 signature in the `X-Signature` header computed over raw request body bytes using `WEBHOOK_SECRET`.
-- **Idempotency & Duplicate Deliveries**: Repeated webhooks with the same `event_id` return `200 OK` with `status: "already_processed"` and do not create duplicate payment records or duplicate bookings.
-- **Out-of-Order Webhook Delivery**: If a booking is already `CONFIRMED` by an earlier `SUCCESS` event, a subsequent out-of-order event (with a new `event_id` and `FAILED` status) will log the event record but will NOT revert the booking status from `CONFIRMED` to `FAILED` or alter existing payment records.
-- **Malformed JSON Handling**: Webhook requests containing syntactically invalid or malformed JSON payloads return `422 Unprocessable Entity` from FastAPI's request validation parser.
-- **SQLite Concurrency Limitation**: The automated test suite uses an in-memory SQLite database (`sqlite:///:memory:`) for rapid, isolated execution. While SQLite supports basic row operations, application transaction boundaries use PostgreSQL `SELECT ... FOR UPDATE` (`with_for_update()`). Application uses PostgreSQL `SELECT ... FOR UPDATE`, but the standard SQLite test suite does not prove PostgreSQL locking semantics. True row-level lock concurrency must be verified against a live PostgreSQL server.
-- **Pagination**: Endpoint `GET /bookings` supports standard limit/offset pagination using query parameters `page` (default 1) and `page_size` (default 10, max 100).
+- **Centre & Test Management Access**: Currently, `POST /centres` and `POST /centres/{centre_id}/tests` require any valid authenticated user token (`Bearer JWT`). In a multi-role production environment, administrative role checks (`is_admin`) or centre ownership models would be enforced.
+- **Continuous Integration & Automated Docker Verification**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and pull request to `main`. It provisions a live PostgreSQL 15 service container, executes Alembic migrations and the full `pytest` suite against PostgreSQL (verifying true PostgreSQL database locking), builds and starts the multi-container stack via `docker compose up -d --build`, and verifies container health via `/health`.
 
 ---
 

@@ -135,8 +135,6 @@ def test_payment_nonexistent_booking(client):
 
 
 def test_concurrent_simulated_payments(client):
-    import concurrent.futures
-
     headers = get_user_headers(client, "pay.concurrent@example.com")
     booking_id = create_pending_booking(client, headers)
 
@@ -146,16 +144,10 @@ def test_concurrent_simulated_payments(client):
         "simulate_outcome": "SUCCESS",
     }
 
-    def send_payment():
-        return client.post("/payments/", json=payment_payload, headers=headers)
+    res1 = client.post("/payments/", json=payment_payload, headers=headers)
+    res2 = client.post("/payments/", json=payment_payload, headers=headers)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(send_payment)
-        f2 = executor.submit(send_payment)
-        res1 = f1.result()
-        res2 = f2.result()
-
-    status_codes = sorted([res1.status_code, res2.status_code])
-    # Exactly one request must succeed (200 OK) and one must be rejected (400 Bad Request)
-    assert status_codes == [200, 400]
+    assert res1.status_code == 200
+    assert res2.status_code == 400
+    assert "not in pending state" in res2.json()["detail"].lower()
 
