@@ -40,7 +40,7 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          until pg_isready -h localhost -p 5432 -U eve_user; do
+          until pg_isready -h 127.0.0.1 -p 5432 -U eve_user; do
             echo "Waiting for postgres..."
             sleep 1
           done
@@ -49,7 +49,7 @@ jobs:
         env:
           SECRET_KEY: ci_secret_key_testing_12345678901234567890
           WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
-          DATABASE_URL: postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
+          DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
         run: |
           python -m alembic upgrade head
 
@@ -57,8 +57,8 @@ jobs:
         env:
           SECRET_KEY: ci_secret_key_testing_12345678901234567890
           WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
-          DATABASE_URL: postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
-          TEST_DATABASE_URL: postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
+          DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
+          TEST_DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
         run: |
           python -m pytest -v
 
