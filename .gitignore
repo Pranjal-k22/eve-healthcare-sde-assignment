@@ -1,0 +1,28 @@
+# Private engineering documentation (Control Center)
+docs/
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
