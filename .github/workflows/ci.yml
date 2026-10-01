@@ -17,6 +17,7 @@ jobs:
           POSTGRES_USER: eve_user
           POSTGRES_PASSWORD: eve_password
           POSTGRES_DB: eve_healthcare_db
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -52,7 +53,7 @@ jobs:
           POSTGRES_SERVER: "127.0.0.1"
           DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
         run: |
-          python -m alembic upgrade head
+          python -c "import alembic.config; alembic.config.main(argv=['upgrade', 'head'])"
 
       - name: Run Pytest Suite against PostgreSQL
         env:
