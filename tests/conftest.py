@@ -28,13 +28,20 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db():
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        if engine.dialect.name == "sqlite":
+            Base.metadata.drop_all(bind=engine)
+        else:
+            # Clean up all table data for PostgreSQL isolation
+            with engine.connect() as conn:
+                for table in reversed(Base.metadata.sorted_tables):
+                    conn.execute(table.delete())
+                conn.commit()
 
 
 @pytest.fixture(scope="function")

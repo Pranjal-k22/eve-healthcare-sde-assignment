@@ -72,7 +72,18 @@ jobs:
 
       - name: Verify Container Health & Status
         run: |
-          sleep 15
+          echo "Waiting for Docker Compose stack to become healthy..."
+          for i in {1..30}; do
+            if curl -s -f http://localhost:8000/health > /dev/null; then
+              echo "FastAPI health check passed!"
+              curl -s http://localhost:8000/health
+              echo ""
+              docker compose ps
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check timed out. Showing docker logs:"
           docker compose ps
-          docker compose logs --tail=50
-          curl -f http://localhost:8000/health || exit 1
+          docker compose logs --tail=100
+          exit 1
