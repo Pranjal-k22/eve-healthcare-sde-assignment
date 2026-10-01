@@ -1,6 +1,8 @@
-# Private engineering documentation (Control Center)
+# Private engineering documentation
 docs/
 scratch/
+*.md
+!README.md
 
 # Environment and Secrets
 .env

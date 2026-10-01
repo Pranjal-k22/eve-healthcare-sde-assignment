@@ -53,10 +53,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
 
-      - name: Wait for PostgreSQL
+      - name: Wait for PostgreSQL database readiness
         run: |
-          until pg_isready -h 127.0.0.1 -p 5432 -U eve_user; do
-            echo "Waiting for postgres..."
+          until PGPASSWORD=eve_password psql -h 127.0.0.1 -U eve_user -d eve_healthcare_db -c "SELECT 1;" > /dev/null 2>&1; do
+            echo "Waiting for PostgreSQL database query readiness..."
             sleep 1
           done
 
@@ -74,8 +74,6 @@ jobs:
           python --version
           python -m alembic current || true
           python -c "import os; print('DATABASE_URL set:', bool(os.getenv('DATABASE_URL')))"
-          python -c "import os; print('SECRET_KEY set:', bool(os.getenv('SECRET_KEY')))"
-          python -c "import os; print('WEBHOOK_SECRET set:', bool(os.getenv('WEBHOOK_SECRET')))"
 
   docker-compose-build:
     runs-on: ubuntu-latest
