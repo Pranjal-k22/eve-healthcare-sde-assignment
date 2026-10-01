@@ -95,7 +95,8 @@ def test_create_booking_past_appointment(client):
     }
 
     response = client.post("/bookings", json=bad_payload, headers=headers)
-    assert response.status_code in (400, 422)
+    assert response.status_code == 422
+    assert "must be scheduled in the future" in str(response.json()["detail"]).lower()
 
 
 def test_get_user_bookings_list(client):

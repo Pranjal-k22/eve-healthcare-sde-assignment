@@ -1,5 +1,9 @@
 import uuid
+import hmac
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from app.core.config import settings
 from tests.test_bookings import get_user_headers, setup_centre_and_test
 
 
@@ -14,6 +18,51 @@ def create_pending_booking(client, headers):
     return res.json()["id"]
 
 
+def post_signed_webhook(client, payload_dict, signature_override=None, include_signature=True):
+    raw_bytes = json.dumps(payload_dict).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if include_signature:
+        if signature_override is not None:
+            headers["X-Signature"] = signature_override
+        else:
+            headers["X-Signature"] = hmac.new(settings.WEBHOOK_SECRET.encode(), raw_bytes, hashlib.sha256).hexdigest()
+    return client.post("/payments/webhook/", content=raw_bytes, headers=headers)
+
+
+def test_webhook_missing_signature(client):
+    headers = get_user_headers(client, "webhook.nosig@example.com")
+    booking_id = create_pending_booking(client, headers)
+
+    webhook_payload = {
+        "event_id": "evt_nosig_001",
+        "provider_payment_id": "pay_nosig",
+        "booking_id": booking_id,
+        "status": "SUCCESS",
+    }
+
+    # Request without X-Signature header -> 401 Unauthorized
+    response = post_signed_webhook(client, webhook_payload, include_signature=False)
+    assert response.status_code == 401
+    assert "missing" in response.json()["detail"].lower()
+
+
+def test_webhook_invalid_signature(client):
+    headers = get_user_headers(client, "webhook.badsig@example.com")
+    booking_id = create_pending_booking(client, headers)
+
+    webhook_payload = {
+        "event_id": "evt_badsig_001",
+        "provider_payment_id": "pay_badsig",
+        "booking_id": booking_id,
+        "status": "SUCCESS",
+    }
+
+    # Request with wrong X-Signature header -> 401 Unauthorized
+    response = post_signed_webhook(client, webhook_payload, signature_override="invalid_hmac_hash_value")
+    assert response.status_code == 401
+    assert "invalid" in response.json()["detail"].lower()
+
+
 def test_webhook_success_first_delivery(client):
     headers = get_user_headers(client, "webhook.user1@example.com")
     booking_id = create_pending_booking(client, headers)
@@ -25,7 +74,7 @@ def test_webhook_success_first_delivery(client):
         "status": "SUCCESS",
     }
 
-    response = client.post("/payments/webhook/", json=webhook_payload)
+    response = post_signed_webhook(client, webhook_payload)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "processed"
@@ -49,7 +98,7 @@ def test_webhook_failed_first_delivery(client):
         "status": "FAILED",
     }
 
-    response = client.post("/payments/webhook/", json=webhook_payload)
+    response = post_signed_webhook(client, webhook_payload)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "processed"
@@ -73,18 +122,18 @@ def test_webhook_idempotency_duplicate_delivery(client):
     }
 
     # First delivery -> processed
-    res1 = client.post("/payments/webhook/", json=webhook_payload)
+    res1 = post_signed_webhook(client, webhook_payload)
     assert res1.status_code == 200
     assert res1.json()["status"] == "processed"
 
     # Second delivery -> already_processed
-    res2 = client.post("/payments/webhook/", json=webhook_payload)
+    res2 = post_signed_webhook(client, webhook_payload)
     assert res2.status_code == 200
     assert res2.json()["status"] == "already_processed"
     assert res2.json()["event_id"] == "evt_duplicate_999"
 
     # Third delivery -> already_processed
-    res3 = client.post("/payments/webhook/", json=webhook_payload)
+    res3 = post_signed_webhook(client, webhook_payload)
     assert res3.status_code == 200
     assert res3.json()["status"] == "already_processed"
 
@@ -103,7 +152,7 @@ def test_webhook_unknown_booking(client):
         "status": "SUCCESS",
     }
 
-    response = client.post("/payments/webhook/", json=webhook_payload)
+    response = post_signed_webhook(client, webhook_payload)
     assert response.status_code == 404
 
 
@@ -112,9 +161,9 @@ def test_webhook_conflicting_replay(client):
     booking_id = create_pending_booking(client, headers)
 
     # First event says SUCCESS
-    res1 = client.post(
-        "/payments/webhook/",
-        json={
+    res1 = post_signed_webhook(
+        client,
+        {
             "event_id": "evt_conflict_777",
             "provider_payment_id": "pay_conflict_777",
             "booking_id": booking_id,
@@ -125,9 +174,9 @@ def test_webhook_conflicting_replay(client):
     assert res1.json()["status"] == "processed"
 
     # Conflicting replay for SAME event_id says FAILED -> Should return already_processed without state mutation!
-    res2 = client.post(
-        "/payments/webhook/",
-        json={
+    res2 = post_signed_webhook(
+        client,
+        {
             "event_id": "evt_conflict_777",
             "provider_payment_id": "pay_conflict_777",
             "booking_id": booking_id,
@@ -148,9 +197,9 @@ def test_webhook_same_payment_different_event(client):
     booking_id = create_pending_booking(client, headers)
 
     # Event 1 for Payment X
-    res1 = client.post(
-        "/payments/webhook/",
-        json={
+    res1 = post_signed_webhook(
+        client,
+        {
             "event_id": "evt_first_111",
             "provider_payment_id": "pay_shared_888",
             "booking_id": booking_id,
@@ -161,9 +210,9 @@ def test_webhook_same_payment_different_event(client):
     assert res1.json()["status"] == "processed"
 
     # Event 2 for SAME Payment X
-    res2 = client.post(
-        "/payments/webhook/",
-        json={
+    res2 = post_signed_webhook(
+        client,
+        {
             "event_id": "evt_second_222",
             "provider_payment_id": "pay_shared_888",
             "booking_id": booking_id,
@@ -177,53 +226,3 @@ def test_webhook_same_payment_different_event(client):
     res_b = client.get(f"/bookings/{booking_id}", headers=headers)
     assert res_b.status_code == 200
     assert res_b.json()["status"] == "CONFIRMED"
-
-
-def test_webhook_hmac_invalid_signature(client):
-    headers = get_user_headers(client, "webhook.hmacbad@example.com")
-    booking_id = create_pending_booking(client, headers)
-
-    webhook_payload = {
-        "event_id": "evt_hmac_bad_001",
-        "provider_payment_id": "pay_hmac_bad",
-        "booking_id": booking_id,
-        "status": "SUCCESS",
-    }
-
-    response = client.post(
-        "/payments/webhook/",
-        json=webhook_payload,
-        headers={"X-Signature": "invalid_hmac_signature_value"},
-    )
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid webhook HMAC signature"
-
-
-def test_webhook_hmac_valid_signature(client):
-    import hmac, hashlib
-    from app.core.config import settings
-    from app.schemas.webhook import PaymentWebhookPayload
-
-    headers = get_user_headers(client, "webhook.hmacgood@example.com")
-    booking_id = create_pending_booking(client, headers)
-
-    webhook_payload = {
-        "event_id": "evt_hmac_good_001",
-        "provider_payment_id": "pay_hmac_good",
-        "booking_id": booking_id,
-        "status": "SUCCESS",
-    }
-
-    # Generate valid signature matching Pydantic model_dump_json() format
-    payload_dto = PaymentWebhookPayload(**webhook_payload)
-    payload_str = payload_dto.model_dump_json()
-    valid_sig = hmac.new(settings.WEBHOOK_SECRET.encode(), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
-
-    response = client.post(
-        "/payments/webhook/",
-        json=webhook_payload,
-        headers={"X-Signature": valid_sig},
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "processed"
-

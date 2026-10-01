@@ -1,7 +1,9 @@
+import json
 from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.exceptions import BadRequestException
 from app.schemas.payment import SimulatedPaymentRequest, PaymentResponse
 from app.schemas.webhook import PaymentWebhookPayload, WebhookProcessResponse
 from app.services.payment_service import process_simulated_payment
@@ -22,11 +24,19 @@ def create_simulated_payment(
 
 
 @router.post("/webhook/", response_model=WebhookProcessResponse, status_code=status.HTTP_200_OK)
-def handle_payment_webhook(
-    webhook_in: PaymentWebhookPayload,
+async def handle_payment_webhook(
+    request: Request,
     db: Session = Depends(get_db),
     x_signature: str | None = Header(None, alias="X-Signature"),
 ):
     """Idempotent payment webhook endpoint receiving status updates from payment providers."""
-    verify_webhook_signature(payload_str=webhook_in.model_dump_json(), signature=x_signature)
+    raw_body = await request.body()
+    verify_webhook_signature(payload_bytes=raw_body, signature=x_signature)
+
+    try:
+        json_data = json.loads(raw_body.decode("utf-8"))
+        webhook_in = PaymentWebhookPayload(**json_data)
+    except Exception as exc:
+        raise BadRequestException(detail=f"Invalid webhook payload format: {str(exc)}")
+
     return process_payment_webhook(db=db, webhook_in=webhook_in)

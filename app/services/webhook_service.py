@@ -13,10 +13,10 @@ from app.core.exceptions import NotFoundException, BadRequestException, Unauthor
 from app.core.config import settings
 
 
-def verify_webhook_signature(payload_str: str, signature: str | None) -> None:
+def verify_webhook_signature(payload_bytes: bytes, signature: str | None) -> None:
     if not signature or not signature.strip():
-        return
-    expected = hmac.new(settings.WEBHOOK_SECRET.encode(), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
+        raise UnauthorizedException(detail="Missing webhook HMAC signature")
+    expected = hmac.new(settings.WEBHOOK_SECRET.encode(), payload_bytes, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, signature.strip()):
         raise UnauthorizedException(detail="Invalid webhook HMAC signature")
 
