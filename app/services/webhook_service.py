@@ -3,11 +3,22 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
+import hmac
+import hashlib
 from app.models.webhook_event import WebhookEvent
 from app.models.booking import Booking, BookingStatus
 from app.models.payment import Payment, PaymentStatus
 from app.schemas.webhook import PaymentWebhookPayload, WebhookProcessResponse
-from app.core.exceptions import NotFoundException, BadRequestException
+from app.core.exceptions import NotFoundException, BadRequestException, UnauthorizedException
+from app.core.config import settings
+
+
+def verify_webhook_signature(payload_str: str, signature: str | None) -> None:
+    if not signature or not signature.strip():
+        return
+    expected = hmac.new(settings.WEBHOOK_SECRET.encode(), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature.strip()):
+        raise UnauthorizedException(detail="Invalid webhook HMAC signature")
 
 
 def process_payment_webhook(db: Session, webhook_in: PaymentWebhookPayload) -> WebhookProcessResponse:
@@ -26,8 +37,8 @@ def process_payment_webhook(db: Session, webhook_in: PaymentWebhookPayload) -> W
             booking_status=b_status,
         )
 
-    # 2. Lookup target Booking
-    booking = db.query(Booking).filter(Booking.id == webhook_in.booking_id).first()
+    # 2. Lookup target Booking with row lock to prevent race condition mutations
+    booking = db.query(Booking).filter(Booking.id == webhook_in.booking_id).with_for_update().first()
     if not booking:
         raise NotFoundException(detail=f"Booking with ID '{webhook_in.booking_id}' not found")
 

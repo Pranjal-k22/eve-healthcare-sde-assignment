@@ -12,6 +12,7 @@ credentials/
 __pycache__/
 *.py[cod]
 *$py.class
+*.db
 .pytest_cache/
 .coverage
 htmlcov/

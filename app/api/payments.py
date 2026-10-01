@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.schemas.payment import SimulatedPaymentRequest, PaymentResponse
 from app.schemas.webhook import PaymentWebhookPayload, WebhookProcessResponse
 from app.services.payment_service import process_simulated_payment
-from app.services.webhook_service import process_payment_webhook
+from app.services.webhook_service import process_payment_webhook, verify_webhook_signature
 from app.services.auth_service import get_current_user
 from app.models.user import User
 
@@ -25,6 +25,8 @@ def create_simulated_payment(
 def handle_payment_webhook(
     webhook_in: PaymentWebhookPayload,
     db: Session = Depends(get_db),
+    x_signature: str | None = Header(None, alias="X-Signature"),
 ):
     """Idempotent payment webhook endpoint receiving status updates from payment providers."""
+    verify_webhook_signature(payload_str=webhook_in.model_dump_json(), signature=x_signature)
     return process_payment_webhook(db=db, webhook_in=webhook_in)

@@ -13,8 +13,8 @@ def process_simulated_payment(
     current_user_id: uuid.UUID,
     payment_in: SimulatedPaymentRequest,
 ) -> Payment:
-    # 1. Fetch booking by ID
-    booking = db.query(Booking).filter(Booking.id == payment_in.booking_id).first()
+    # 1. Fetch booking by ID with row lock to prevent concurrent payment races
+    booking = db.query(Booking).filter(Booking.id == payment_in.booking_id).with_for_update().first()
     if not booking:
         raise NotFoundException(detail=f"Booking with ID '{payment_in.booking_id}' not found")
 

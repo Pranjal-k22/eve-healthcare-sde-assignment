@@ -177,3 +177,53 @@ def test_webhook_same_payment_different_event(client):
     res_b = client.get(f"/bookings/{booking_id}", headers=headers)
     assert res_b.status_code == 200
     assert res_b.json()["status"] == "CONFIRMED"
+
+
+def test_webhook_hmac_invalid_signature(client):
+    headers = get_user_headers(client, "webhook.hmacbad@example.com")
+    booking_id = create_pending_booking(client, headers)
+
+    webhook_payload = {
+        "event_id": "evt_hmac_bad_001",
+        "provider_payment_id": "pay_hmac_bad",
+        "booking_id": booking_id,
+        "status": "SUCCESS",
+    }
+
+    response = client.post(
+        "/payments/webhook/",
+        json=webhook_payload,
+        headers={"X-Signature": "invalid_hmac_signature_value"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid webhook HMAC signature"
+
+
+def test_webhook_hmac_valid_signature(client):
+    import hmac, hashlib
+    from app.core.config import settings
+    from app.schemas.webhook import PaymentWebhookPayload
+
+    headers = get_user_headers(client, "webhook.hmacgood@example.com")
+    booking_id = create_pending_booking(client, headers)
+
+    webhook_payload = {
+        "event_id": "evt_hmac_good_001",
+        "provider_payment_id": "pay_hmac_good",
+        "booking_id": booking_id,
+        "status": "SUCCESS",
+    }
+
+    # Generate valid signature matching Pydantic model_dump_json() format
+    payload_dto = PaymentWebhookPayload(**webhook_payload)
+    payload_str = payload_dto.model_dump_json()
+    valid_sig = hmac.new(settings.WEBHOOK_SECRET.encode(), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    response = client.post(
+        "/payments/webhook/",
+        json=webhook_payload,
+        headers={"X-Signature": valid_sig},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "processed"
+

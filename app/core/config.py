@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = "supersecretkeyforlocaldevonly1234567890!"
+    WEBHOOK_SECRET: str = "whsec_supersecretmockkey123456789"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 

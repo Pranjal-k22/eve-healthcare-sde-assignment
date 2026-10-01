@@ -55,12 +55,17 @@ def create_booking(db: Session, user_id: uuid.UUID, booking_in: BookingCreateReq
     return booking
 
 
-def get_user_bookings(db: Session, user_id: uuid.UUID) -> list[Booking]:
+def get_user_bookings(
+    db: Session, user_id: uuid.UUID, page: int = 1, page_size: int = 10
+) -> list[Booking]:
+    offset = (page - 1) * page_size
     return (
         db.query(Booking)
         .options(joinedload(Booking.centre), joinedload(Booking.test))
         .filter(Booking.user_id == user_id)
         .order_by(Booking.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
         .all()
     )
 
