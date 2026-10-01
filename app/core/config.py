@@ -10,10 +10,10 @@ class Settings(BaseSettings):
     # Database
     POSTGRES_USER: str = "eve_user"
     POSTGRES_PASSWORD: str = "eve_password"
-    POSTGRES_SERVER: str = "localhost"
+    POSTGRES_SERVER: str = "127.0.0.1"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "eve_healthcare_db"
-    DATABASE_URL: str = "postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db"
+    DATABASE_URL: str = "postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db"
 
     # Security
     SECRET_KEY: str
