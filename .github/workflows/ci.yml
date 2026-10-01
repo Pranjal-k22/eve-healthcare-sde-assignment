@@ -9,13 +9,6 @@ on:
 jobs:
   test-postgresql:
     runs-on: ubuntu-latest
-    env:
-      SECRET_KEY: ci_secret_key_testing_12345678901234567890
-      WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
-      POSTGRES_SERVER: "127.0.0.1"
-      DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
-      TEST_DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
-
     services:
       postgres:
         image: postgres:15-alpine
@@ -30,10 +23,25 @@ jobs:
           --health-cmd "pg_isready -U eve_user -d eve_healthcare_db"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+
+    env:
+      SECRET_KEY: ci_secret_key_testing_12345678901234567890
+      WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
+      POSTGRES_SERVER: "127.0.0.1"
+      DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
+      TEST_DATABASE_URL: postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create .env configuration for test runner
+        run: |
+          cp .env.example .env
+          sed -i 's|SECRET_KEY=.*|SECRET_KEY=ci_secret_key_testing_12345678901234567890|' .env
+          sed -i 's|WEBHOOK_SECRET=.*|WEBHOOK_SECRET=ci_webhook_secret_testing_12345678901234567890|' .env
+          sed -i 's|POSTGRES_SERVER=.*|POSTGRES_SERVER=127.0.0.1|' .env
+          sed -i 's|DATABASE_URL=.*|DATABASE_URL=postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db|' .env
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -54,7 +62,7 @@ jobs:
 
       - name: Run Alembic Database Migrations against PostgreSQL
         run: |
-          python -c "from alembic.config import Config; from alembic import command; cfg = Config('alembic.ini'); command.upgrade(cfg, 'head')"
+          python -m alembic upgrade head
 
       - name: Run Pytest Suite against PostgreSQL
         run: |
@@ -79,20 +87,17 @@ jobs:
           cp .env.example .env
           sed -i 's|SECRET_KEY=.*|SECRET_KEY=ci_secret_key_testing_12345678901234567890|' .env
           sed -i 's|WEBHOOK_SECRET=.*|WEBHOOK_SECRET=ci_webhook_secret_testing_12345678901234567890|' .env
-          sed -i 's|POSTGRES_SERVER=localhost|POSTGRES_SERVER=db|' .env
-          sed -i 's|DATABASE_URL=postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db|DATABASE_URL=postgresql://eve_user:eve_password@db:5432/eve_healthcare_db|' .env
+          sed -i 's|POSTGRES_SERVER=.*|POSTGRES_SERVER=db|' .env
+          sed -i 's|DATABASE_URL=.*|DATABASE_URL=postgresql://eve_user:eve_password@db:5432/eve_healthcare_db|' .env
 
       - name: Build and Start Docker Compose Stack
-        env:
-          SECRET_KEY: ci_secret_key_testing_12345678901234567890
-          WEBHOOK_SECRET: ci_webhook_secret_testing_12345678901234567890
         run: |
           docker compose up -d --build
 
       - name: Verify Container Health & Status
         run: |
           echo "Waiting for Docker Compose stack to become healthy..."
-          for i in {1..30}; do
+          for i in $(seq 1 30); do
             if curl -s -f http://localhost:8000/health > /dev/null; then
               echo "FastAPI health check passed!"
               curl -s http://localhost:8000/health
@@ -101,21 +106,17 @@ jobs:
               exit 0
             fi
             echo "Attempt $i: http://localhost:8000/health not ready yet..."
-            docker compose ps || true
-            docker compose logs --tail=10 web || true
             sleep 2
           done
           echo "Health check timed out."
           exit 1
 
-      - name: Debug Docker Failures & Logs
+      - name: Dump logs on failure
         if: failure()
         run: |
           echo "=== Docker Compose PS (All Containers) ==="
           docker compose ps -a
           echo "=== Docker Compose Web Logs ==="
-          docker compose logs --tail=200 web
+          docker compose logs web
           echo "=== Docker Compose DB Logs ==="
-          docker compose logs --tail=200 db
-
-
+          docker compose logs db
