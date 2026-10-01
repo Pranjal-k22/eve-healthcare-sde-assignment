@@ -5,21 +5,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Set safe test-only environment secrets prior to loading settings/app
-os.environ["SECRET_KEY"] = "test_only_secret_key_12345678901234567890"
-os.environ["WEBHOOK_SECRET"] = "test_only_webhook_secret_12345678901234567890"
+# Set safe test-only environment secrets prior to loading settings/app if not already in env
+os.environ.setdefault("SECRET_KEY", "test_only_secret_key_12345678901234567890")
+os.environ.setdefault("WEBHOOK_SECRET", "test_only_webhook_secret_12345678901234567890")
 
 from app.core.database import Base, get_db
 from app.main import app
 
-# Create in-memory SQLite database for test suite isolation
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

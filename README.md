@@ -1,5 +1,7 @@
 # EVE Healthcare — Backend Engineering Assignment
 
+[![CI & Docker Verification](https://github.com/Pranjal-k22/eve-healthcare-sde-assignment/actions/workflows/ci.yml/badge.svg)](https://github.com/Pranjal-k22/eve-healthcare-sde-assignment/actions/workflows/ci.yml)
+
 Production-ready backend API service for diagnostic test bookings, simulated payment processing, and idempotent payment webhooks built with **FastAPI**, **PostgreSQL**, **SQLAlchemy 2.0**, **Alembic**, and **Docker**.
 
 ---
