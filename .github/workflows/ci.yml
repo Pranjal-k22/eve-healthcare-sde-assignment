@@ -54,7 +54,19 @@ jobs:
 
       - name: Run Alembic Database Migrations against PostgreSQL
         run: |
-          python -m alembic upgrade head
+          python -c "
+          import traceback, sys
+          try:
+              import alembic.config
+              alembic.config.main(argv=['alembic', 'upgrade', 'head'])
+          except SystemExit as se:
+              if se.code != 0:
+                  print(f'Alembic SystemExit: {se.code}')
+                  sys.exit(se.code)
+          except Exception as e:
+              traceback.print_exc()
+              sys.exit(1)
+          "
 
       - name: Run Pytest Suite against PostgreSQL
         run: |
