@@ -1,4 +1,5 @@
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     POSTGRES_SERVER: str = "127.0.0.1"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "eve_healthcare_db"
-    DATABASE_URL: str = "postgresql://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db"
+    DATABASE_URL: str = "postgresql+psycopg2://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db"
 
     # Security
     SECRET_KEY: str
@@ -23,5 +24,16 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: str) -> str:
+        if isinstance(v, str):
+            if v.startswith("postgresql://"):
+                return v.replace("postgresql://", "postgresql+psycopg2://", 1)
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+psycopg2://", 1)
+        return v
+
 
 settings = Settings()
+

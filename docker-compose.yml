@@ -34,7 +34,7 @@ services:
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=eve_healthcare_db
-      - DATABASE_URL=postgresql://eve_user:eve_password@db:5432/eve_healthcare_db
+      - DATABASE_URL=postgresql+psycopg2://eve_user:eve_password@db:5432/eve_healthcare_db
       - SECRET_KEY=${SECRET_KEY}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - ALGORITHM=HS256
