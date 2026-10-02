@@ -226,3 +226,15 @@ def test_webhook_same_payment_different_event(client):
     res_b = client.get(f"/bookings/{booking_id}", headers=headers)
     assert res_b.status_code == 200
     assert res_b.json()["status"] == "CONFIRMED"
+
+
+def test_webhook_malformed_json_valid_signature(client):
+    malformed_bytes = b'{"event_id": "evt_malformed", "provider_payment_id": "pay_123", "booking_id":'
+    signature = hmac.new(settings.WEBHOOK_SECRET.encode(), malformed_bytes, hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json", "X-Signature": signature}
+
+    response = client.post("/payments/webhook/", content=malformed_bytes, headers=headers)
+    assert response.status_code == 400
+    assert "detail" in response.json()
+    assert "payload format" in response.json()["detail"].lower()
+
