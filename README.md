@@ -11,7 +11,7 @@ Backend API service for diagnostic test bookings, simulated payment processing, 
 This project is a backend system for a diagnostic healthcare platform where users can browse diagnostic centres and tests, schedule appointments, process simulated payments, and handle provider webhooks reliably.
 
 ### Key Implementation Facts
-- **Automated Test Suite**: 45 unit and integration tests passing cleanly across all API modules.
+- **Automated Test Suite**: 45 unit and integration tests covering authentication, centres, tests, bookings, payments, webhooks, and health checks.
 - **Idempotency & Race Protection**: Database-backed `event_id` unique constraint combined with row-level locks (`SELECT ... FOR UPDATE`) to prevent duplicate payments or status corruption during concurrent webhook deliveries.
 - **HMAC Signature Verification**: Provider webhooks verified via SHA256 HMAC signatures (`X-Signature` header) calculated over raw HTTP body bytes.
 - **Server-Side Price Derivation**: Booking amount is read directly from `DiagnosticTest.price` on the server instead of accepting price inputs from the client.
@@ -410,7 +410,7 @@ tests/test_webhooks.py (9 passed)
 Continuous Integration is configured via GitHub Actions (`.github/workflows/ci.yml`). On every push to `main`, the CI workflow:
 1. Starts a PostgreSQL 15 service container.
 2. Executes Alembic migrations against live PostgreSQL.
-3. Runs the 45 pytest tests against PostgreSQL to verify row-locking behavior.
+3. Runs the 45 pytest tests against PostgreSQL. The concurrent payment test exercises the row-locking behavior used to protect booking state.
 4. Builds the Docker Compose stack and verifies container health via `/health`.
 
 ---
