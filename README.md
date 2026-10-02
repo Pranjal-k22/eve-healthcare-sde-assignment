@@ -11,7 +11,7 @@ Production-ready backend API service for diagnostic test bookings, simulated pay
 This backend system powers the core workflow of a diagnostic healthcare platform where patients can browse diagnostic centres and tests, schedule test bookings, process payments, and sync payment status via idempotent provider webhooks.
 
 ### Key Highlights
-- **100% Test Pass Rate**: 43 automated unit and integration tests passing cleanly across all modules.
+- **100% Test Pass Rate**: 45 automated unit and integration tests passing cleanly across all modules.
 - **Strict Idempotency & Race Protection**: DB-backed `event_id` unique constraint combined with row-level locks (`SELECT ... FOR UPDATE`) preventing duplicate payments or status corruption on repeated or concurrent webhook deliveries.
 - **HMAC Signature Security**: Provider webhooks verified using SHA256 HMAC signatures (`X-Signature` header) computed over raw body bytes.
 - **Server-Side Price Protection**: Immutable pricing derived strictly from `DiagnosticTest.price`. Client-submitted amounts are ignored.
