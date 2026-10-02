@@ -2,41 +2,39 @@
 
 [![CI & Docker Verification](https://github.com/Pranjal-k22/eve-healthcare-sde-assignment/actions/workflows/ci.yml/badge.svg)](https://github.com/Pranjal-k22/eve-healthcare-sde-assignment/actions/workflows/ci.yml)
 
-Production-ready backend API service for diagnostic test bookings, simulated payment processing, and idempotent payment webhooks built with **FastAPI**, **PostgreSQL**, **SQLAlchemy 2.0**, **Alembic**, and **Docker**.
+Backend API service for diagnostic test bookings, simulated payment processing, and idempotent payment webhooks built with **FastAPI**, **PostgreSQL**, **SQLAlchemy 2.0**, **Alembic**, and **Docker**.
 
 ---
 
-## Executive Summary & Architecture Overview
+## Overview
 
-This backend system powers the core workflow of a diagnostic healthcare platform where patients can browse diagnostic centres and tests, schedule test bookings, process payments, and sync payment status via idempotent provider webhooks.
+This project is a backend system for a diagnostic healthcare platform where users can browse diagnostic centres and tests, schedule appointments, process simulated payments, and handle provider webhooks reliably.
 
-### Key Highlights
-- **100% Test Pass Rate**: 45 automated unit and integration tests passing cleanly across all modules.
-- **Strict Idempotency & Race Protection**: DB-backed `event_id` unique constraint combined with row-level locks (`SELECT ... FOR UPDATE`) preventing duplicate payments or status corruption on repeated or concurrent webhook deliveries.
-- **HMAC Signature Security**: Provider webhooks verified using SHA256 HMAC signatures (`X-Signature` header) computed over raw body bytes.
-- **Server-Side Price Protection**: Immutable pricing derived strictly from `DiagnosticTest.price`. Client-submitted amounts are ignored.
-- **Cross-Tenant Isolation**: Ownership validation on all user booking retrieval, cancellation, and payment operations (`403 FORBIDDEN`).
-- **Production Containerization**: Multi-stage Docker setup with Docker Compose orchestrating PostgreSQL and automatic Alembic migrations.
+### Key Implementation Facts
+- **Automated Test Suite**: 45 unit and integration tests passing cleanly across all API modules.
+- **Idempotency & Race Protection**: Database-backed `event_id` unique constraint combined with row-level locks (`SELECT ... FOR UPDATE`) to prevent duplicate payments or status corruption during concurrent webhook deliveries.
+- **HMAC Signature Verification**: Provider webhooks verified via SHA256 HMAC signatures (`X-Signature` header) calculated over raw HTTP body bytes.
+- **Server-Side Price Derivation**: Booking amount is read directly from `DiagnosticTest.price` on the server instead of accepting price inputs from the client.
+- **Resource Ownership Enforcement**: Ownership validation on user booking retrieval, cancellation, and payment endpoints (`403 FORBIDDEN`).
+- **Containerized Environment**: Multi-container setup with Docker Compose orchestrating PostgreSQL, application startup, and automatic database migrations.
 
 ---
 
-## Tech Stack & Tooling
+## Tech Stack
 
 | Component | Technology | Rationale / Purpose |
 | :--- | :--- | :--- |
-| **Framework** | FastAPI (Python 3.11+) | Async ASGI framework with automatic Pydantic request validation and Swagger generation |
-| **Database** | PostgreSQL 15/16 | Relational database enforcing strict foreign keys, unique constraints, and enum types |
-| **ORM** | SQLAlchemy 2.0 | Type-safe declarative ORM with explicit session boundaries & row-level locking (`with_for_update()`) |
-| **Migrations** | Alembic | Version-controlled schema migrations |
-| **Security** | PyJWT & Direct `bcrypt` | HMAC-SHA256 JWT tokens & standard `bcrypt` password hashing |
-| **Containerization** | Docker & Docker Compose | Containerized application & database orchestration |
-| **Testing** | Pytest & HTTPX TestClient | End-to-end integration and unit testing suite |
+| **Framework** | FastAPI (Python 3.11+) | Async ASGI framework with automatic Pydantic validation and interactive Swagger documentation |
+| **Database** | PostgreSQL 15 | Relational storage enforcing foreign keys, unique constraints, and status enums |
+| **ORM** | SQLAlchemy 2.0 | Declarative ORM with explicit session boundaries and row-level locking (`with_for_update()`) |
+| **Migrations** | Alembic | Version-controlled database schema migrations |
+| **Security** | PyJWT & `bcrypt` | HMAC-SHA256 JWT access tokens and `bcrypt` password hashing |
+| **Containerization** | Docker & Docker Compose | Application containerization and PostgreSQL service orchestration |
+| **Testing** | Pytest & HTTPX TestClient | Automated integration and unit testing suite |
 
 ---
 
-## System Architecture & Domain Workflows
-
-### Logical Flow Diagram
+## Architecture & Request Flow
 
 ```text
                                    CLIENT / USER
@@ -79,9 +77,9 @@ This backend system powers the core workflow of a diagnostic healthcare platform
 
 ---
 
-## Database Schema Design
+## Database Design
 
-The relational schema is built on 6 core models with strict referential integrity:
+The database schema consists of 6 models defined in SQLAlchemy and managed via Alembic migrations:
 
 1. **`users`**:
    - `id` (UUID, Primary Key)
@@ -96,16 +94,16 @@ The relational schema is built on 6 core models with strict referential integrit
    - `name` (VARCHAR 255, Required)
    - `location` (VARCHAR 255, Required)
    - `is_active` (BOOLEAN, Default `True`)
-   - `created_at`, `updated_at` (Timestamps with TZ)
+   - `created_at` (Timestamp with TZ)
 
 3. **`diagnostic_tests`**:
    - `id` (UUID, Primary Key)
-   - `centre_id` (UUID, Foreign Key -> `diagnostic_centres.id` RESTRICT)
+   - `centre_id` (UUID, Foreign Key -> `diagnostic_centres.id` CASCADE)
    - `name` (VARCHAR 255, Required)
    - `description` (TEXT)
    - `price` (NUMERIC(10, 2), Required, > 0)
    - `is_active` (BOOLEAN, Default `True`)
-   - `created_at`, `updated_at` (Timestamps with TZ)
+   - `created_at` (Timestamp with TZ)
 
 4. **`bookings`**:
    - `id` (UUID, Primary Key)
@@ -114,7 +112,7 @@ The relational schema is built on 6 core models with strict referential integrit
    - `test_id` (UUID, Foreign Key -> `diagnostic_tests.id` RESTRICT)
    - `appointment_date` (DateTime with TZ, Required)
    - `amount` (NUMERIC(10, 2), Required)
-   - `status` (SQLEnum: `PENDING`, `CONFIRMED`, `FAILED`, `CANCELLED`, Index)
+   - `status` (Enum: `PENDING`, `CONFIRMED`, `FAILED`, `CANCELLED`, Index)
    - `created_at`, `updated_at` (Timestamps with TZ)
 
 5. **`payments`**:
@@ -123,13 +121,13 @@ The relational schema is built on 6 core models with strict referential integrit
    - `transaction_id` (VARCHAR 255, Unique Index, Required)
    - `payment_method` (VARCHAR 50, Default `MOCK_PAYMENT`)
    - `amount` (NUMERIC(10, 2), Required)
-   - `status` (SQLEnum: `SUCCESS`, `FAILED`)
+   - `status` (Enum: `SUCCESS`, `FAILED`)
    - `raw_response` (JSON)
    - `created_at` (Timestamp with TZ)
 
 6. **`webhook_events`**:
    - `id` (UUID, Primary Key)
-   - `event_id` (VARCHAR 255, Unique Index, Required) — *Primary Idempotency Ledger Key*
+   - `event_id` (VARCHAR 255, Unique Index, Required)
    - `provider_payment_id` (VARCHAR 255, Required)
    - `booking_id` (UUID, Foreign Key -> `bookings.id` RESTRICT)
    - `payload` (JSON, Required)
@@ -137,152 +135,27 @@ The relational schema is built on 6 core models with strict referential integrit
 
 ---
 
-## API Surface & Endpoints
+## API Endpoints
 
-| Category | Method | Endpoint | Auth | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **System** | `GET` | `/health` | None | Application health & database ping check |
-| **Auth** | `POST` | `/auth/signup` | None | Register new user account |
-| **Auth** | `POST` | `/auth/login` | None | Authenticate user & return JWT token |
-| **Auth** | `GET` | `/auth/me` | Bearer | Get authenticated user profile |
-| **Centres** | `GET` | `/centres` | None | List active diagnostic centres |
-| **Centres** | `POST` | `/centres` | Bearer | Create a new diagnostic centre |
-| **Centres** | `GET` | `/centres/{centre_id}` | None | Retrieve diagnostic centre details |
-| **Tests** | `POST` | `/centres/{centre_id}/tests` | Bearer | Add a diagnostic test to a centre |
-| **Tests** | `GET` | `/centres/{centre_id}/tests` | None | List active tests offered by a centre |
-| **Tests** | `GET` | `/tests/{test_id}` | None | Retrieve diagnostic test details |
-| **Bookings** | `POST` | `/bookings` | Bearer | Create a test booking (`PENDING`). Past appointment date returns `422 Unprocessable Entity` |
-| **Bookings** | `GET` | `/bookings` | Bearer | List current user's bookings (Supports query params: `page`, `page_size`) |
-| **Bookings** | `GET` | `/bookings/{booking_id}` | Bearer | Retrieve booking details by ID (Ownership protected) |
-| **Bookings** | `POST` | `/bookings/{booking_id}/cancel` | Bearer | Cancel a `PENDING` booking (Ownership protected) |
-| **Payments** | `POST` | `/payments/` | Bearer | Process simulated payment (`SUCCESS`/`FAILED`). Row locked via `with_for_update()` |
-| **Webhooks** | `POST` | `/payments/webhook/` | None / HMAC | Provider-facing idempotent payment status webhook. Verified via `X-Signature` header |
-
----
-
-## Environment Variables Configuration
-
-The application configures settings via `pydantic-settings` directly from environment variables or `.env`. There are **no default secret values** in `app/core/config.py`; `SECRET_KEY` and `WEBHOOK_SECRET` MUST be provided in the environment or `.env` file.
-
-```env
-# Application Configuration
-APP_NAME="Eve Healthcare Assignment API"
-ENV="development"
-DEBUG=True
-
-# Database Configuration
-POSTGRES_USER=eve_user
-POSTGRES_PASSWORD=eve_password
-POSTGRES_SERVER=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=eve_healthcare_db
-DATABASE_URL=postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db
-
-# Security & JWT Configuration
-SECRET_KEY=change_this_to_a_secure_random_key_in_production_32_bytes_min
-WEBHOOK_SECRET=change_this_to_a_secure_webhook_secret_in_production_32_bytes_min
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-```
-
-### Docker Compose Configuration Flow
-The intended configuration flow for Docker environments is:
-```text
-.env.example  ──►  Developer creates .env  ──►  docker compose  ──►  Container Environment  ──►  FastAPI Settings
-```
-`docker-compose.yml` passes `${SECRET_KEY}` and `${WEBHOOK_SECRET}` from the local `.env` into the `web` container's environment. Secrets are never hardcoded inside `docker-compose.yml` or source files.
-
----
-
-## Local Setup & Runbook
-
-> **Note**: Docker Compose is the recommended easiest local setup because it provisions PostgreSQL, configures the environment, and runs migrations automatically.
-
-### Running with Docker Compose (Recommended)
-
-To launch the complete application stack (PostgreSQL database + FastAPI application + Automatic database migrations) with a single command:
-
-1. Create `.env` from `.env.example`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Run Docker Compose:
-   ```bash
-   docker compose up --build
-   ```
-
-The application will automatically wait for PostgreSQL to pass its health check, execute Alembic migrations, and start listening on port `8000`.
-
-To stop the containers:
-```bash
-docker compose down
-```
-
----
-
-## Local Run Without Docker
-
-If running without Docker, a native **PostgreSQL** instance is required. Do NOT add SQLite to the production or application database configuration merely to avoid PostgreSQL setup.
-
-1. **Ensure PostgreSQL is running** locally on port 5432 (or your configured port).
-2. **Create the database user** matching the example configuration:
-   ```sql
-   CREATE USER eve_user WITH PASSWORD 'eve_password';
-   ```
-3. **Create the database** matching the example configuration and grant ownership:
-   ```sql
-   CREATE DATABASE eve_healthcare_db OWNER eve_user;
-   GRANT ALL PRIVILEGES ON DATABASE eve_healthcare_db TO eve_user;
-   ```
-4. **Set environment variables** in `.env` or your shell:
-   - Set `DATABASE_URL` (e.g. `postgresql://eve_user:eve_password@localhost:5432/eve_healthcare_db`)
-   - Set `SECRET_KEY` (e.g. `your_secure_secret_key_here`)
-   - Set `WEBHOOK_SECRET` (e.g. `your_secure_webhook_secret_here`)
-5. **Create a virtual environment & install dependencies**:
-   ```bash
-   python -m venv .venv
-   # On Windows PowerShell:
-   .venv\Scripts\Activate.ps1
-   # On Linux/macOS:
-   source .venv/bin/activate
-
-   pip install -r requirements.txt
-   ```
-6. **Execute database migrations**:
-   ```bash
-   python -m alembic upgrade head
-   ```
-7. **Start the FastAPI application**:
-   ```bash
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-   ```
-
-Access the interactive API documentation at:
-- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
-
----
-
-## Running Test Suite
-
-Run the full automated test suite using `pytest`:
-
-```bash
-python -m pytest -v
-```
-
-### Test Suite Output Summary
-```text
-tests/test_auth.py ........                             [ 18%]
-tests/test_bookings.py .......                           [ 34%]
-tests/test_centres.py .....                             [ 46%]
-tests/test_health.py ..                                 [ 51%]
-tests/test_payments.py ........                         [ 69%]
-tests/test_tests.py ......                              [ 83%]
-tests/test_webhooks.py ........                         [100%]
-
-======================= 43 passed in 63.78s =======================
-```
+| Category | Method | Path | Auth | Purpose | Success | Important Errors |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **System** | `GET` | `/` | None | API welcome & documentation discovery | `200 OK` | N/A |
+| **System** | `GET` | `/health` | None | Service & database health check | `200 OK` | `500 Internal Error` |
+| **Auth** | `POST` | `/auth/signup` | None | User account registration | `201 Created` | `400 Bad Request` |
+| **Auth** | `POST` | `/auth/login` | None | Authenticate user & issue JWT bearer token | `200 OK` | `401 Unauthorized` |
+| **Auth** | `GET` | `/auth/me` | Bearer | Get current user profile | `200 OK` | `401 Unauthorized` |
+| **Centres** | `POST` | `/centres/` | Bearer | Create a new diagnostic centre | `201 Created` | `401 Unauthorized`, `422 Validation Error` |
+| **Centres** | `GET` | `/centres/` | None | List active diagnostic centres | `200 OK` | `422 Validation Error` |
+| **Centres** | `GET` | `/centres/{centre_id}` | None | Get diagnostic centre details | `200 OK` | `404 Not Found` |
+| **Tests** | `POST` | `/tests/` | Bearer | Add a diagnostic test to a centre | `201 Created` | `400 Bad Request`, `401 Unauthorized`, `404 Not Found` |
+| **Tests** | `GET` | `/tests/` | None | List active tests for a centre | `200 OK` | `422 Validation Error` |
+| **Tests** | `GET` | `/tests/{test_id}` | None | Get diagnostic test details | `200 OK` | `404 Not Found` |
+| **Bookings** | `POST` | `/bookings/` | Bearer | Create a test booking (`PENDING`) | `201 Created` | `400 Bad Request`, `401 Unauthorized`, `404 Not Found` |
+| **Bookings** | `GET` | `/bookings/` | Bearer | List current user's bookings | `200 OK` | `401 Unauthorized` |
+| **Bookings** | `GET` | `/bookings/{booking_id}` | Bearer | Retrieve booking details (Ownership protected) | `200 OK` | `401 Unauthorized`, `403 Forbidden`, `404 Not Found` |
+| **Bookings** | `POST` | `/bookings/{booking_id}/cancel` | Bearer | Cancel a `PENDING` booking (Ownership protected) | `200 OK` | `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` |
+| **Payments** | `POST` | `/payments/` | Bearer | Process simulated payment | `200 OK` | `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` |
+| **Webhooks** | `POST` | `/payments/webhook/` | HMAC Header | Idempotent payment webhook callback | `200 OK` | `400 Bad Request`, `401 Unauthorized`, `404 Not Found` |
 
 ---
 
@@ -309,7 +182,7 @@ tests/test_webhooks.py ........                         [100%]
 ```
 
 ### 2. Create Booking
-**`POST /bookings`** *(Headers: `Authorization: Bearer <JWT_TOKEN>`)*
+**`POST /bookings/`** *(Headers: `Authorization: Bearer <JWT_TOKEN>`)*
 ```json
 {
   "centre_id": "c1a2b3c4-0000-0000-0000-000000000001",
@@ -331,7 +204,30 @@ tests/test_webhooks.py ........                         [100%]
 }
 ```
 
-### 3. Process Payment Webhook
+### 3. Simulate Payment
+**`POST /payments/`** *(Headers: `Authorization: Bearer <JWT_TOKEN>`)*
+```json
+{
+  "booking_id": "b9f8e7d6-1111-2222-3333-444455556666",
+  "simulate_outcome": "SUCCESS",
+  "payment_method": "CREDIT_CARD"
+}
+```
+**Response (`200 OK`)**:
+```json
+{
+  "id": "p1a2b3c4-5555-6666-7777-888899990000",
+  "booking_id": "b9f8e7d6-1111-2222-3333-444455556666",
+  "transaction_id": "tx_mock_a1b2c3d4e5f67890",
+  "payment_method": "CREDIT_CARD",
+  "amount": "150.00",
+  "status": "SUCCESS",
+  "booking_status": "CONFIRMED",
+  "created_at": "2026-10-01T12:10:00Z"
+}
+```
+
+### 4. Process Payment Webhook
 **`POST /payments/webhook/`** *(Headers: `X-Signature: <HMAC_SHA256_HEX>`)*
 ```json
 {
@@ -354,18 +250,181 @@ tests/test_webhooks.py ........                         [100%]
 }
 ```
 
+### 5. Duplicate Webhook Handling
+If `evt_wh_1001` is sent again:
+**Response (`200 OK`)**:
+```json
+{
+  "status": "already_processed",
+  "event_id": "evt_wh_1001",
+  "message": "Webhook event has already been processed",
+  "booking_id": "b9f8e7d6-1111-2222-3333-444455556666",
+  "booking_status": "CONFIRMED"
+}
+```
+
 ---
 
-## Engineering Assumptions & Limitations
+## Booking State Machine
 
-- **Centre & Test Management Access**: Currently, `POST /centres` and `POST /centres/{centre_id}/tests` require any valid authenticated user token (`Bearer JWT`). In a multi-role production environment, administrative role checks (`is_admin`) or centre ownership models would be enforced.
-- **Continuous Integration & Automated Docker Verification**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and pull request to `main`. It provisions a live PostgreSQL 15 service container, executes Alembic migrations and the full `pytest` suite against PostgreSQL (verifying true PostgreSQL database locking), builds and starts the multi-container stack via `docker compose up -d --build`, and verifies container health via `/health`.
+The booking status follows a strict lifecycle:
+
+```
+          ┌─────────────┐
+          │   PENDING   │
+          └──────┬──────┘
+                 │
+      ┌──────────┼──────────┐
+      ▼          ▼          ▼
+┌───────────┐ ┌────────┐ ┌───────────┐
+│ CONFIRMED │ │ FAILED │ │ CANCELLED │
+└───────────┘ └────────┘ └───────────┘
+```
+
+1. **`PENDING` -> `CONFIRMED`**: Triggered when a payment or webhook reports `SUCCESS`.
+2. **`PENDING` -> `FAILED`**: Triggered when a payment or webhook reports `FAILED`.
+3. **`PENDING` -> `CANCELLED`**: Triggered when the user cancels the booking before payment.
+4. **Finalized State Protection**: Once a booking reaches `CONFIRMED`, `FAILED`, or `CANCELLED`, subsequent payment or cancellation attempts are rejected with `400 Bad Request`.
 
 ---
 
-## Future Enhancements
+## Webhook Handling & Idempotency
 
-1. **Rate Limiting**: Integrate `slowapi` or Redis token-bucket rate limiting on `/auth/login` and `/payments/webhook/`.
-2. **Asynchronous Webhook Queue**: Integrate Celery or Arq with Redis for background retries of failed downstream webhook events.
-3. **Structured JSON Logging**: Implement `structlog` for enhanced observability in cloud logging platforms (Datadog, AWS CloudWatch).
+- **HMAC Signature Security**: The `/payments/webhook/` endpoint requires the `X-Signature` header containing an HMAC-SHA256 digest computed over the raw HTTP request body using `WEBHOOK_SECRET`. Signature comparison uses `hmac.compare_digest` to prevent timing attacks.
+- **Idempotency Ledger**: Webhook events are inserted into the `webhook_events` table, which enforces a `UNIQUE` constraint on `event_id`. If a duplicate `event_id` arrives, the system catches the integrity constraint and returns `already_processed` without re-processing payments or altering booking state.
+- **Out-of-Order Delivery**: If an out-of-order `FAILED` event arrives after a booking is already `CONFIRMED`, the event is saved to `webhook_events` for auditability, but the booking status remains `CONFIRMED`.
 
+---
+
+## Edge Cases Handled
+
+The implementation and test suite explicitly cover:
+
+- **Invalid User Credentials**: `POST /auth/login` returns `401 Unauthorized` for non-existent users or incorrect passwords.
+- **Unauthorized Resource Access**: Attempting to retrieve, cancel, or pay for another user's booking returns `403 Forbidden`.
+- **Centre and Test Mismatch**: Booking creation verifies that the specified `test_id` belongs directly to the `centre_id` (`400 Bad Request`).
+- **Past Appointment Timestamps**: Bookings scheduled in the past are rejected (`400 Bad Request`).
+- **Client Price Tampering**: Client cannot submit arbitrary prices; amounts are read server-side from `DiagnosticTest.price`.
+- **Payment on Finalized Bookings**: Processing payments on `CONFIRMED`, `FAILED`, or `CANCELLED` bookings returns `400 Bad Request`.
+- **Duplicate Webhooks**: Repeated delivery of identical `event_id` returns `200 OK` with status `already_processed`.
+- **Malformed Webhook Payloads**: Signed requests with invalid JSON return `400 Bad Request` without exposing stack traces.
+- **Missing / Invalid Webhook Signatures**: Returns `401 Unauthorized`.
+- **Concurrent Payments**: Row-level locking (`with_for_update()`) prevents race conditions during simultaneous payment processing.
+
+---
+
+## Local Setup & Configuration
+
+### Environment Configuration
+Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+
+Required variables in `.env`:
+```env
+APP_NAME="Eve Healthcare Assignment API"
+ENV="development"
+DEBUG=True
+
+POSTGRES_USER=eve_user
+POSTGRES_PASSWORD=eve_password
+POSTGRES_SERVER=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_DB=eve_healthcare_db
+DATABASE_URL=postgresql+psycopg2://eve_user:eve_password@127.0.0.1:5432/eve_healthcare_db
+
+SECRET_KEY=change_this_to_a_secure_random_key_in_production_32_bytes_min
+WEBHOOK_SECRET=change_this_to_a_secure_webhook_secret_in_production_32_bytes_min
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+```
+
+---
+
+## Running the Application
+
+### Option A: Docker Compose (Recommended)
+
+Docker Compose builds the FastAPI app container, starts PostgreSQL 15, waits for database readiness, and runs Alembic migrations automatically:
+
+```bash
+docker compose up --build
+```
+
+Access the API documentation at:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+To stop the containers:
+```bash
+docker compose down
+```
+
+### Option B: Local Python Environment (Without Docker)
+
+1. Ensure a local PostgreSQL 15 database is running and create the user/database:
+   ```sql
+   CREATE USER eve_user WITH PASSWORD 'eve_password';
+   CREATE DATABASE eve_healthcare_db OWNER eve_user;
+   ```
+2. Set up virtual environment and install dependencies:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   ```
+3. Run Alembic migrations:
+   ```bash
+   python -m alembic upgrade head
+   ```
+4. Start the server:
+   ```bash
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+
+---
+
+## Running Tests
+
+Run the Pytest suite locally:
+
+```bash
+python -m pytest -v
+```
+
+### Local Test Output Summary
+```text
+tests/test_auth.py (8 passed)
+tests/test_bookings.py (7 passed)
+tests/test_centres.py (5 passed)
+tests/test_health.py (2 passed)
+tests/test_payments.py (8 passed)
+tests/test_tests.py (6 passed)
+tests/test_webhooks.py (9 passed)
+
+======================= 45 passed in 23.99s =======================
+```
+
+### CI & PostgreSQL Verification
+Continuous Integration is configured via GitHub Actions (`.github/workflows/ci.yml`). On every push to `main`, the CI workflow:
+1. Starts a PostgreSQL 15 service container.
+2. Executes Alembic migrations against live PostgreSQL.
+3. Runs the 45 pytest tests against PostgreSQL to verify row-locking behavior.
+4. Builds the Docker Compose stack and verifies container health via `/health`.
+
+---
+
+## Assumptions & Limitations
+
+- **Management Authorization**: Currently, creating centres (`POST /centres/`) and tests (`POST /tests/`) requires any valid authenticated user token (`Bearer JWT`). Role-based access control (e.g. `is_admin`) can be added for multi-role environments.
+- **Simulated Payment Provider**: The payment endpoint simulates payment outcomes (`SUCCESS` or `FAILED`) without connecting to external banking gateways.
+- **Docker Local Availability**: Local execution via Docker Compose requires Docker Desktop installed on the developer machine. Local running without Docker is fully supported using native Python and PostgreSQL.
+
+---
+
+## Future Improvements
+
+1. **Role-Based Access Control (RBAC)**: Restrict diagnostic centre and test management endpoints to administrator roles.
+2. **Rate Limiting**: Add rate-limiting middleware (e.g., `slowapi`) to public and auth endpoints to prevent brute-force attacks.
+3. **Async Webhook Processing**: Offload payment status webhook actions to background task queues (e.g., Celery / Redis) for high-throughput scaling.
